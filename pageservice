@@ -1,0 +1,463 @@
+package vaablog.core.services;
+
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.jcr.ItemExistsException;
+import javax.jcr.Node;
+import javax.jcr.PathNotFoundException;
+import javax.jcr.RepositoryException;
+import javax.jcr.Session;
+import javax.jcr.lock.LockException;
+import javax.jcr.nodetype.ConstraintViolationException;
+import javax.jcr.version.VersionException;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.metatype.annotations.Designate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.day.cq.replication.Replicator;
+import com.day.cq.wcm.api.Page;
+import com.day.cq.wcm.api.PageManager;
+
+import vaablog.core.bean.ExportPageBlogItems;
+import vaablog.core.utils.PageUtils;
+import vaablog.core.utils.VaaBlogConstants;
+/*purpose of this class is, creating news pages and adding components to the pages and setting properties through sling api*/
+@Component
+@Designate(ocd = BlogPageConfiguration.class)
+public class PageServiceImp implements PageService {
+	private static final Logger LOG = LoggerFactory.getLogger(PageServiceImp.class);
+
+	private static int counter = 0;
+	private static int secondcounter = 0;
+
+	ResourceResolver resourceResolver;
+
+	@Reference
+	private Replicator replicator;
+
+	@Reference
+	private ResourceResolverFactory resolverFactory;
+	private String rootPagePath;
+	private String articleTemplate;
+	private String renderer = "/apps/vaa/components/page/basepage";
+	Page ourPlacesPage = null;
+	Page ourStylePage = null;
+	Page ourPeoplePage = null;
+	Page ourAircraftPage = null;
+	Page ourFuturePage = null;
+	Page ourExperiencePage = null;
+	Page ourWorldPage = null;
+	Page ourHistoryPage = null;
+
+	@Activate
+	protected void activate(BlogPageConfiguration config) {
+		this.rootPagePath = config.getRootPage();
+		this.articleTemplate = config.getTemplate();
+	}
+
+	public void createNewsPages(List<ExportPageBlogItems> newsList) throws Exception {
+
+		try {
+			Map<String, Object> param = new HashMap<String, Object>();
+			param.put(ResourceResolverFactory.SUBSERVICE, "FcCalculatorService1");
+
+			resourceResolver = resolverFactory.getServiceResourceResolver(param);
+			Session session = resourceResolver.adaptTo(Session.class);
+			int tempCounter = 0;
+			for (ExportPageBlogItems newsItem : newsList) {
+				try {
+					LOG.info(":::::::::::::Current News Item to be created in createNewsPages:::::::::::" + counter);
+					createArticlePage(newsItem, resourceResolver);
+					LOG.info(
+							"::::::::::::: current news Item processed. Next News Item to be created:::::::::::::::::::::::");
+					if (counter == 75) {
+						resourceResolver.commit();
+						session.save();
+						session.refresh(true);
+						counter = 0;
+					}
+				} catch (Exception e) {
+					LOG.info(":::::::::exception in createNews Pages for loop::::::::" + e.getMessage());
+					continue;
+				}
+				counter++;
+				tempCounter++;
+			}
+			resourceResolver.commit();
+			session.save();
+			session.refresh(true);
+			resourceResolver.close();
+			LOG.info(":::::::::::::Pages creation completed.Count of Pages created/updated in AEM:::::::::::"
+					+ tempCounter);
+
+		} catch (Exception e) {
+			LOG.error("Exception occurred while creating page from export news list and on createNewsPages {} ", e);
+			LOG.info("Exception occurred while creating page from export news list and on createNewsPages {} "
+					+ e.getMessage());
+			throw e;
+		}
+
+	}
+
+	static int nthLastIndexOf(int nth, String ch, String string) {
+		if (nth <= 0)
+			return string.length();
+		return nthLastIndexOf(--nth, ch, string.substring(0, string.lastIndexOf(ch)));
+	}
+
+	private void createArticlePage(ExportPageBlogItems newsItem, ResourceResolver resourceResolver) throws Exception {
+
+		Page newsPage = null;
+
+		Session session = resourceResolver.adaptTo(Session.class);
+		PageManager pageManager = resourceResolver.adaptTo(PageManager.class);
+		String permaLink = newsItem.getPermaLink();
+		String pageName;
+		if (permaLink != null) {
+			String subStringUrl = permaLink.substring(nthLastIndexOf(2, "/", permaLink) + 1,
+					permaLink.lastIndexOf("/"));
+			if (subStringUrl.equals("blog.virginatlantic.com")) {
+				pageName = newsItem.getId();
+			} else {
+				pageName = permaLink.substring(nthLastIndexOf(2, "/", permaLink) + 1, permaLink.lastIndexOf("/"));
+			}
+		} else {
+			pageName = newsItem.getId();
+		}
+
+		if (session != null) {
+			if (newsItem.getCategories().contains("Our Places") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurPlaces", resourceResolver)) {
+					ourPlacesPage = pageManager.getPage(rootPagePath + "/" + "OurPlaces");
+
+				} else {
+					ourPlacesPage = pageManager.create(rootPagePath, "OurPlaces", articleTemplate, "OurPlaces");
+				}
+				if (!this.isPageExists(ourPlacesPage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourPlacesPage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+			if (newsItem.getCategories().contains("Our Style") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurStyle", resourceResolver)) {
+					ourStylePage = pageManager.getPage(rootPagePath + "/" + "OurStyle");
+
+				} else {
+					ourStylePage = pageManager.create(rootPagePath, "OurStyle", articleTemplate, "OurStyle");
+				}
+				if (!this.isPageExists(ourStylePage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourStylePage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+			if (newsItem.getCategories().contains("Our People") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurPeople", resourceResolver)) {
+					ourPeoplePage = pageManager.getPage(rootPagePath + "/" + "OurPeople");
+
+				} else {
+					ourPeoplePage = pageManager.create(rootPagePath, "OurPeople", articleTemplate, "OurPeople");
+				}
+				if (!this.isPageExists(ourPeoplePage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourPeoplePage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+			if (newsItem.getCategories().contains("Our Aircraft") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurAircraft", resourceResolver)) {
+					ourAircraftPage = pageManager.getPage(rootPagePath + "/" + "OurAircraft");
+
+				} else {
+					ourAircraftPage = pageManager.create(rootPagePath, "OurAircraft", articleTemplate, "OurAircraft");
+				}
+				if (!this.isPageExists(ourAircraftPage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourAircraftPage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+			if (newsItem.getCategories().contains("Our Future") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurFuture", resourceResolver)) {
+					ourFuturePage = pageManager.getPage(rootPagePath + "/" + "OurFuture");
+
+				} else {
+					ourFuturePage = pageManager.create(rootPagePath, "OurFuture", articleTemplate, "OurFuture");
+				}
+				if (!this.isPageExists(ourFuturePage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourFuturePage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+			if (newsItem.getCategories().contains("Our Experience") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurExperience", resourceResolver)) {
+					ourExperiencePage = pageManager.getPage(rootPagePath + "/" + "OurExperience");
+
+				} else {
+					ourExperiencePage = pageManager.create(rootPagePath, "OurExperience", articleTemplate,
+							"OurExperience");
+				}
+				if (!this.isPageExists(ourExperiencePage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourExperiencePage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+
+			if (newsItem.getCategories().contains("Our World") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurWorld", resourceResolver)) {
+					ourWorldPage = pageManager.getPage(rootPagePath + "/" + "OurWorld");
+
+				} else {
+					ourWorldPage = pageManager.create(rootPagePath, "OurWorld", articleTemplate, "OurWorld");
+				}
+				if (!this.isPageExists(ourWorldPage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourWorldPage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+
+			if (newsItem.getCategories().contains("Our History") && newsPage == null) {
+				if (this.isPageExists(rootPagePath + "/" + "OurHistory", resourceResolver)) {
+					ourHistoryPage = pageManager.getPage(rootPagePath + "/" + "OurHistory");
+
+				} else {
+					ourHistoryPage = pageManager.create(rootPagePath, "OurHistory", articleTemplate, "OurHistory");
+				}
+				if (!this.isPageExists(ourHistoryPage.getPath() + "/" + pageName, resourceResolver)) {
+					newsPage = pageManager.create(ourHistoryPage.getPath(), pageName, articleTemplate,
+							newsItem.getTitle());
+				}
+
+			}
+
+			Node pageNode = newsPage.adaptTo(Node.class);
+			Node jcrNode = null;
+			if (newsPage.hasContent()) {
+				jcrNode = newsPage.getContentResource().adaptTo(Node.class);
+			} else {
+				jcrNode = pageNode.addNode("jcr:content", "cq:PageContent");
+			}
+			// setting page properties
+
+			Node parsysNode = this.getNode(jcrNode, "parsys_banner");
+			Node parsysNodeabovefooter = this.getNode(jcrNode, "parsys_above_footer");
+			setProperties(parsysNode, VaaBlogConstants.RESOURCE_TYPE, VaaBlogConstants.NODE_PARSYS);
+			setProperties(parsysNodeabovefooter, VaaBlogConstants.RESOURCE_TYPE, VaaBlogConstants.NODE_PARSYS);
+
+			// title component and properties added
+			Node titleNode = this.getNode(parsysNodeabovefooter, VaaBlogConstants.TITLE_COMPONENT);
+			setProperties(titleNode, VaaBlogConstants.RESOURCE_TYPE, VaaBlogConstants.RES_TYPE_TITLE_COMPONENT);
+			setProperties(titleNode, VaaBlogConstants.ARTILE_TITLE, newsItem.getTitle());
+			setProperties(titleNode, VaaBlogConstants.ARTILE_TITLE_STYLE, VaaBlogConstants.ARTILE_TITLE_STYLE_VALUE);
+			setProperties(titleNode, VaaBlogConstants.ARTILE_TITLE_ALLIGN, VaaBlogConstants.ARTILE_TITLE_ALLIGN_VALUE);
+			setProperties(titleNode, VaaBlogConstants.ARTILE_TITLE_COLOR, VaaBlogConstants.ARTILE_TITLE_COLOR_VALUE);
+			setProperties(titleNode, VaaBlogConstants.ARTILE_TITLE_TYPE, VaaBlogConstants.ARTILE_TITLE_TYPE_VALUE);
+
+			// author component and properties added
+			Node authornode = this.getNode(parsysNodeabovefooter, VaaBlogConstants.AUTHOR_COMPONENT);
+			setProperties(authornode, VaaBlogConstants.RESOURCE_TYPE, VaaBlogConstants.RES_TYPE_AUTHORINFO_COMPONENT);
+			setProperties(authornode, VaaBlogConstants.ATTR_DATE, newsItem.getDate());
+			setProperties(authornode, "displayDate", "true");
+			setProperties(authornode, "displayName", "true");
+			setProperties(authornode, VaaBlogConstants.ATTR_AUTHOR_NAME,
+					"By: " + newsItem.getAuthorFirstName() + " " + newsItem.getAuthorLastName());
+			setProperties(authornode, VaaBlogConstants.ARTILE_AUTHOR_DISPALY_DATE,
+					VaaBlogConstants.ARTILE_AUTHOR_DISPALY_DATE_VALUE);
+			setProperties(authornode, VaaBlogConstants.ARTILE_AUTHOR_DISPALY_NAME,
+					VaaBlogConstants.ARTILE_AUTHOR_DISPALY_NAME_VALUE);
+
+			// Hero image component and properties added
+			try {
+				Node imageNode = this.getNode(parsysNodeabovefooter, VaaBlogConstants.HEROBANNER_COMPONENT);
+				setProperties(imageNode, VaaBlogConstants.RESOURCE_TYPE,
+						VaaBlogConstants.RES_TYPE_HEROBANNER_COMPONENT);
+				InputStream inputStream = null;
+				String imgPath = null;
+				String imgName = null;
+				URLConnection connection = new URL(newsItem.getImageFeatured()).openConnection();
+				connection.setRequestProperty("User-Agent",
+						"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11");
+				connection.connect();
+				if (isURL(newsItem.getImageFeatured()) && newsItem.getImageFeatured().contains("https")) {
+					inputStream = connection.getInputStream();
+					if (newsItem.getImageFeatured().contains("?")) {
+						imgName = newsItem.getImageFeatured().substring(
+								newsItem.getImageFeatured().lastIndexOf("/") + 1,
+								newsItem.getImageFeatured().lastIndexOf("?"));
+					} else {
+						imgName = StringUtils.substringAfterLast(newsItem.getImageFeatured(), "/");
+					}
+					imgName = imgName.replaceAll("%20", "_");
+					if (!(imgName.indexOf("?") == -1)) {
+						imgName = imgName.substring(0, imgName.indexOf("?"));
+					}
+					LOG.debug(":::::imgName string is:::::: {}", imgName);
+					if (imgName.indexOf(".php") == -1 && imgName.contains(".")) {
+						imgPath = VaaBlogConstants.DAM_ARTICLE_HERO_IMG_PREFIX + imgName;
+						LOG.debug("::::::imagepath in parseRTEForImgTag:::::: {}", imgPath);
+						PageUtils.writeJsontoDAM(resourceResolver, inputStream, imgPath, replicator,
+								PageUtils.getImageExtnMimeType(imgName.substring(imgName.indexOf(".") + 1)));
+						inputStream.close();
+						inputStream = null;
+						LOG.debug("::::::after dam write parseRTEForImgTag:::::::::");
+					}
+
+				}
+				setProperties(imageNode, VaaBlogConstants.ARTILE_BANNER_FILEREFERENCE,
+						/* newsItem.getImageFeatured() */ imgPath);
+				jcrNode.setProperty("blogImage", /* newsItem.getImageFeatured() */imgPath);
+			} catch (Exception ex) {
+				LOG.error("exception in parseRTEForImgTag :::: {}", ex);
+			}
+
+			// adding page properties
+			jcrNode.setProperty("blogTitle", newsItem.getTitle());
+			jcrNode.setProperty("blogAuthorDate", newsItem.getDate());
+
+			jcrNode.setProperty("blogAuthorName", newsItem.getAuthorFirstName() + " " + newsItem.getAuthorLastName());
+			// Blog content component and properties added
+			Node cardNode = this.getNode(parsysNodeabovefooter, VaaBlogConstants.BLOG_CONTENT_COMPONENT);
+			setProperties(cardNode, "textIsRich", "true");
+			setProperties(cardNode, VaaBlogConstants.RESOURCE_TYPE, VaaBlogConstants.RES_TYPE_BLOG_CONTENT_COMPONENT);
+
+			if (newsItem.getContent() != null) {
+				try {
+					setProperties(cardNode, VaaBlogConstants.ATTR_DESCRIPTION,
+							parseRTEForImgTag(newsItem.getContent(), resourceResolver, replicator));
+					session.refresh(true);
+				} catch (Exception e) {
+					LOG.info("exception in parsing RTE string for img tag:::");
+					setProperties(cardNode, VaaBlogConstants.ATTR_DESCRIPTION, newsItem.getContent());
+				}
+			}
+
+		} else {
+			LOG.info("::::::::::::unable to create news item  in AEM for the current item:::::::::::::::");
+		}
+	}
+
+	public static boolean isURL(String url) {
+		try {
+			URLConnection connection = new URL(url).openConnection();
+			connection.setRequestProperty("User-Agent",
+					"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11");
+			connection.connect();
+			InputStream inputStream = connection.getInputStream();
+			inputStream.close();
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	public static String parseRTEForImgTag(String rteText, ResourceResolver resolver, Replicator replicator) {
+		Pattern p = Pattern.compile("src=\"(.*?)\"");
+		Matcher m = p.matcher(rteText);
+		StringBuffer parsedRteElementVal = new StringBuffer();
+		InputStream inputStream = null;
+		String imgName = "";
+		try {
+			while (m.find()) {
+				String srcString = m.group().replace("src=", "").replace("\"", "");
+				LOG.debug(":::::src string is:::::: {}", srcString);
+				URLConnection connection = new URL(srcString).openConnection();
+				connection.setRequestProperty("User-Agent",
+						"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11");
+				connection.connect();
+				if (isURL(srcString) && srcString.contains("https")) {
+					inputStream = connection.getInputStream();
+					if (srcString.contains("?")) {
+						imgName = srcString.substring(srcString.lastIndexOf("/") + 1, srcString.lastIndexOf("?"));
+					} else {
+						imgName = StringUtils.substringAfterLast(srcString, "/");
+					}
+					imgName = imgName.replaceAll("%20", "_");
+					if (!(imgName.indexOf("?") == -1)) {
+						imgName = imgName.substring(0, imgName.indexOf("?"));
+					}
+					LOG.debug(":::::imgName string is:::::: {}", imgName);
+					if (imgName.indexOf(".php") == -1 && imgName.contains(".")) {
+						String imgPath = VaaBlogConstants.DAM_ARTICLE_RTE_IMG_PREFIX + imgName;
+						LOG.debug("::::::imagepath in parseRTEForImgTag:::::: {}", imgPath);
+						m.appendReplacement(parsedRteElementVal, m.group().replace(srcString, imgPath));
+						PageUtils.writeJsontoDAM(resolver, inputStream, imgPath, replicator,
+								PageUtils.getImageExtnMimeType(imgName.substring(imgName.indexOf(".") + 1)));
+						inputStream.close();
+						inputStream = null;
+						LOG.debug("::::::after dam write parseRTEForImgTag:::::::::");
+					}
+
+				}
+			}
+		} catch (Exception e) {
+			LOG.error("exception in parseRTEForImgTag :::: {}", e);
+			LOG.debug("exception in parseRTEForImgTag :::: {}", e);
+		}
+		m.appendTail(parsedRteElementVal);
+		return parsedRteElementVal.toString();
+	}
+
+	private Node getNode(Node parentNode, String relNode) throws PathNotFoundException, ItemExistsException,
+			VersionException, ConstraintViolationException, LockException, RepositoryException {
+		Node target = null;
+		if (parentNode.hasNode(relNode)) {
+			target = parentNode.getNode(relNode);
+		} else {
+			target = parentNode.addNode(relNode);
+		}
+		return target;
+	}
+
+	private void setProperties(Node propNode, String propName, String propValue) {
+
+		try {
+			if (propNode != null) {
+				if (!propNode.hasProperty(propName)) {
+					propNode.setProperty(propName, propValue);
+				}
+			}
+		} catch (RepositoryException e) {
+			LOG.error("Exception occurred while setting Property {} ", e);
+			LOG.info("Exception occurred while setting Property {} ", e);
+		}
+	}
+
+	private String getCDATARemoved(String str) {
+		String newString = "";
+		if (str != null) {
+			newString = str.replace("<![CDATA[", "").replace("]]>", "");
+		}
+		return newString;
+
+	}
+
+	private boolean isPageExists(String pagePath, ResourceResolver resourceResolver) {
+		Resource pageRootResoure = resourceResolver.getResource(pagePath);
+		if (pageRootResoure == null) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+
+}
