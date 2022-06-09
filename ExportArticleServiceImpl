@@ -1,0 +1,501 @@
+package vaablog.core.services;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.metatype.annotations.Designate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import com.day.cq.dam.api.Asset;
+import com.day.cq.dam.api.Rendition;
+import com.day.cq.replication.Replicator;
+
+import vaablog.core.bean.ExportPageBlogItems;
+
+@Component(service = ExportArticleService.class, immediate = true)
+@Designate(ocd = BlogPageConfiguration.class)
+public class ExportArticleServiceImpl implements ExportArticleService {
+	private static Logger LOG = LoggerFactory.getLogger(ExportArticleServiceImpl.class);
+
+	@Reference
+	private Replicator replicator;
+	private String exportXMLPath;
+
+	@Activate
+	protected void activate(BlogPageConfiguration config) {
+		this.exportXMLPath = config.getXml();
+	}
+
+	@Override
+	public List<ExportPageBlogItems> getExportNewsFeedList(ResourceResolver resolver) throws Exception {
+		List<ExportPageBlogItems> exportNewsList = new ArrayList<>();
+		try {
+			Resource res = resolver.getResource(exportXMLPath);
+			Asset asset = res.adaptTo(Asset.class);
+			LOG.info("XML Asset Path: {}", exportXMLPath);
+
+			if (asset != null) {
+				Rendition original = asset.getOriginal();
+				InputStream stream = original.adaptTo(InputStream.class);
+				if (stream != null) {
+					DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+					DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+					LOG.info(stream.toString());
+					Document doc = dBuilder.parse(stream);
+					doc.getDocumentElement().normalize();
+					if (doc.getElementsByTagName("post") != null) {
+						NodeList nList = doc.getElementsByTagName("post");
+						for (int temp = 0; temp < nList.getLength(); temp++) {
+							LOG.info(":::::::::::: current xml item ::::::::::: {}", temp);
+							Node nNode = nList.item(temp);
+							ExportPageBlogItems exportItems = new ExportPageBlogItems();
+							if (nNode.getNodeType() == Node.ELEMENT_NODE) {
+								Element eElement = (Element) nNode;
+								if (eElement.getElementsByTagName("Title") != null) {
+									exportItems.setTitle(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Title").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("id") != null) {
+									exportItems.setId(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("id").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("Permalink") != null) {
+									exportItems.setPermaLink(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Permalink").item(0))));
+
+								}
+
+								if (eElement.getElementsByTagName("ImageFeatured") != null) {
+									exportItems.setImageFeatured(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("ImageFeatured").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("Categories") != null) {
+									exportItems.setCategories(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Categories").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("Tags") != null) {
+									exportItems.setTags(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Tags").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("LegacyorEnhancedarticle") != null) {
+									exportItems.setLegacyorEnhancedarticle(getCDATARemoved(getXmlItemValue(
+											eElement.getElementsByTagName("LegacyorEnhancedarticle").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("AuthorFirstName") != null) {
+									exportItems.setAuthorFirstName(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("AuthorFirstName").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("AuthorLastName") != null) {
+									exportItems.setAuthorLastName(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("AuthorLastName").item(0))));
+
+								}
+								if (eElement.getElementsByTagName("Slug") != null) {
+									exportItems.setSlug(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Slug").item(0))));
+
+								}
+
+								/*if (eElement.getElementsByTagName("Content") != null) {
+									exportItems.setContent(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Content").item(0))));
+
+								}*/
+								/*if (eElement.getElementsByTagName("FlexibleContent") != null) {
+									exportItems.setContent(getCDATARemoved(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Content").item(0)))
+											+ getFormattedRTEValue(
+													eElement.getElementsByTagName("FlexibleContent").item(0))));
+
+								}
+*/
+								if (eElement.getElementsByTagName("FlexibleContent") != null) {
+									exportItems.setContent(
+											getCDATARemoved(getFormattedRTEValue(eElement.getElementsByTagName("FlexibleContent")
+													.item(0))));
+									if(exportItems.getContent() == null || exportItems.getContent().equals("") ) {
+										if (eElement.getElementsByTagName("Content") != null) {
+											exportItems.setContent(getCDATARemoved(
+													getXmlItemValue(eElement.getElementsByTagName("Content").item(0))));
+										}
+									}
+
+								}
+								
+								if (eElement.getElementsByTagName("Date") != null) {
+									exportItems.setDate(getCDATARemoved(
+											getXmlItemValue(eElement.getElementsByTagName("Date").item(0))));
+
+								}
+
+							}
+							if (Objects.nonNull(exportItems.getTitle())
+									&& exportItems.getTitle() != StringUtils.EMPTY) {
+								exportNewsList.add(exportItems);
+
+							} else {
+								LOG.info(
+										"::::::::::::current xml item Article title is invalid. Not adding to list {}:::::::");
+							}
+
+						}
+
+					}
+				}
+			}
+		} catch (Exception e) {
+			// TODO: handle exception
+		}
+
+		Collections.sort(exportNewsList);
+		return exportNewsList;
+	}
+
+	private String getXmlItemValue(Node node) {
+		String nodeValue = "";
+		if (node != null) {
+			nodeValue = node.getTextContent();
+		}
+		return nodeValue;
+
+	}
+	
+	private String getTextColumnImageColumnHtml(Node node) {
+		
+		NodeList childNodeList = node.getChildNodes();
+		String textColumn ="";
+		String imageColumn ="";
+		String textPosition ="";
+		String view = "";
+		for (int i = 0; i < childNodeList.getLength(); i++) {
+			Node subChild = childNodeList.item(i);
+			String childNodeName = subChild.getNodeName();
+			String childNodeContent = subChild.getTextContent();
+			if(childNodeName.equals("text_left_or_right")) {
+				textPosition = getCDATARemoved(childNodeContent);
+			}
+			if(childNodeName.equals("text_column")) {
+				textColumn = getCDATARemoved(childNodeContent);
+			}
+			if(childNodeName.equals("image_column")) {
+				imageColumn = getCDATARemoved(childNodeContent);
+			}
+		}
+		if(textPosition.equals("left")) {
+			view = "lefty";
+		}
+		if(textPosition.equals("right")) {
+			view = "righty";
+		}
+		String html = "<div class=\"row textrow1\">" + 
+				"<div class=\"columns ten offset-by-one\">" + 
+				"<div class=\"halfandhalf\">" + 
+				"<img src=\""+imageColumn+"\" alt=\"\" class=\""+view+"\"/>" + 
+				textColumn+ 
+				"</div>" + 
+				"</div>" + 
+				"</div>";
+		
+		return html;
+
+	}
+	
+private String getTwoColumnHtml(Node node) {
+		
+		NodeList childNodeList = node.getChildNodes();
+		String headingWithLine ="";
+		String textBlock ="";
+		
+		
+		for (int i = 0; i < childNodeList.getLength(); i++) {
+			Node subChild = childNodeList.item(i);
+			String childNodeName = subChild.getNodeName();
+			String childNodeContent = subChild.getTextContent();
+			if(childNodeName.equals("heading_with_lines")) {
+				headingWithLine = getCDATARemoved(childNodeContent);
+			}
+			if(childNodeName.equals("text_block_content")) {
+				textBlock = getCDATARemoved(childNodeContent);
+			}
+			
+		}
+		
+		String html = "<div class=\"row heading-break\">" + 
+				"<div class=\"columns ten offset-by-one\">" + 
+				"<h2><span>" +
+				headingWithLine + 
+				"</span></h2>" + 
+				"</div>" + 
+				"</div>" + 
+				"<div class=\"row textrow1\">" + 
+				"<div class=\"columns ten offset-by-one\">" + 
+				"<div class=\"columnstwo\">" + 
+				textBlock +
+				"</div>" + 
+				"</div>" + 
+				"</div>";
+		
+		return html;
+
+	}
+
+private String getLandscapeImageHtml(Node node) {
+	
+	NodeList childNodeList = node.getChildNodes();
+	String imageWidth ="";
+	String landscapeImagePath ="";
+	String imageCaption ="";
+	String width="";
+	
+	for (int i = 0; i < childNodeList.getLength(); i++) {
+		Node subChild = childNodeList.item(i);
+		String childNodeName = subChild.getNodeName();
+		String childNodeContent = subChild.getTextContent();
+		if(childNodeName.equals("full_width_or_thinner_image")) {
+			imageWidth = getCDATARemoved(childNodeContent);
+		}
+		if(childNodeName.equals("single_landscape_image")) {
+			landscapeImagePath = getCDATARemoved(childNodeContent);
+		}
+		if(childNodeName.equals("image_caption")) {
+			imageCaption = getCDATARemoved(childNodeContent);
+		}
+		
+	}
+	if(imageWidth.equals("full") ) {
+		width = "ten";
+	}
+	if(imageWidth.equals("thin")) {
+		width = "six";
+	}
+	
+	String html = "<div class=\"row imagerow\">" + 
+			"<div class=\"columns "+ width +" offset-by-one\">" + 
+			"<img src=\"" + landscapeImagePath + "\" alt=\"\">" + 
+			"</div>" + 
+			"<div class=\"columns "+ width +" offset-by-one\">" + 
+			"<div class=\"caption\">" + 
+			imageCaption + 
+			"</div>" + 
+			"</div>" + 
+			"</div>";
+	
+	return html;
+
+}
+
+private String getVideoHtml(Node node) {
+	
+	NodeList childNodeList = node.getChildNodes();
+	String vodeoImage ="";
+	String vodeoImageCaption ="";
+	String youTubeCode ="";
+	String vimeoCode="";
+	String videoSource ="";
+	for (int i = 0; i < childNodeList.getLength(); i++) {
+		Node subChild = childNodeList.item(i);
+		String childNodeName = subChild.getNodeName();
+		String childNodeContent = subChild.getTextContent();
+		if(childNodeName.equals("video_placeholder_image")) {
+			vodeoImage = getCDATARemoved(childNodeContent);
+		}
+		if(childNodeName.equals("placeholder_image_caption")) {
+			vodeoImageCaption = getCDATARemoved(childNodeContent);
+		}
+		if(childNodeName.equals("youtube_or_vimeo")) {
+			videoSource = getCDATARemoved(childNodeContent);
+		}if(childNodeName.equals("youtube_code")) {
+			youTubeCode = getCDATARemoved(childNodeContent);
+		}if(childNodeName.equals("vimeo_code")) {
+			vimeoCode = getCDATARemoved(childNodeContent);
+		}
+		
+	}
+	
+	long millis=System.currentTimeMillis();  
+	
+	/*if(videoSource.equals("youtube") ) {
+		width = "ten";
+	}
+	if(videoSource.equals("vimeo")) {
+		width = "six";
+	}*/
+	
+	String html = "<div class=\"row video\">" + 
+			"<div class=\"columns ten offset-by-one fullimage\">" +
+			"<div class=\"videoComp\">" +
+	        "<div class=\"tabContent\">" +
+			"<div class=\"videoContainer\">" + 
+			"<div data-id=\""+youTubeCode+"_"+millis+"\" data-videoid=\""+youTubeCode+"\" id=\""+youTubeCode+"_"+millis+"\" class=\"videocomp_player\"></div>" + 
+			"</div>" + 
+			"<div>" +
+			"<img src=\""+vodeoImage+"\" alt=\"Video poster image\" class=\"noimgPlaceholder\">" +
+			"</div>"+
+			"<div class=\"trnsprntBckgrnd\">" + 
+			"<!--This div applies the transparent background above the picture and below the content.-->" + 
+			"</div>" +  
+			"<div class=\"contentContainer\">" + 
+			"<div>" + 
+			"<img class=\"playBtn\" src=\"/content/dam/virgin-applications/images/staticpages/icons/video_play.png\" tabindex=\"0\" alt=\"Play video\" role=\"button\">" + 
+			"</div>" + 
+			"</div>" + 
+			"</div>" + 
+			"</div>" +
+			"</div>" + 
+			"</div>";
+	
+	return html;
+
+}
+	private String getFormattedRTEValue(Node node) {
+		String nodeValue = "";
+		StringBuffer sbContent = new StringBuffer();
+		if (node != null) {
+			NodeList childNodeList = node.getChildNodes();
+
+			for (int i = 0; i < childNodeList.getLength(); i++) {
+
+				Node childNode = childNodeList.item(i);
+				String childNodeName = childNode.getNodeName();
+				String childNodeContent = childNode.getTextContent();
+				if(childNodeName.contains("half_and_half_row")) {
+					String htmlContent = getTextColumnImageColumnHtml(childNode);
+					sbContent.append(htmlContent);
+				}else if(childNodeName.contains("text_row_two_columns")) {
+					String htmlContent = getTwoColumnHtml(childNode);
+					sbContent.append(htmlContent);
+				}else if(childNodeName.contains("one_landscape_image_row")) {
+					String htmlContent = getLandscapeImageHtml(childNode);
+					sbContent.append(htmlContent);
+				}else if(childNodeName.contains("video_block")) {
+					String htmlContent = getVideoHtml(childNode);
+					sbContent.append(htmlContent);
+				}
+				else if (childNode.hasChildNodes()) {
+					Map<String, String> subChildNodeMap = getChildNodeNameValueMap(childNode);
+					Iterator<Map.Entry<String, String>> iterator = subChildNodeMap.entrySet().iterator();
+					while (iterator.hasNext()) {
+						Map.Entry<String, String> entry = iterator.next();
+
+						if (entry.getKey() == "pull_out_fact_content") {
+							String htmlContent = "<div class=\"row factrow1\">      "
+									+ "    <div class=\"columns ten offset-by-one \"> "
+									+ getCDATARemoved(entry.getValue()) + "	</div> " + "</div> ";
+							sbContent.append(htmlContent);
+						} else if (entry.getKey() == "text_block_content") {
+							String htmlContent = "<div class=\"row textrow1\">"
+									+ "	<div class=\"columns ten offset-by-one\">" + getCDATARemoved(entry.getValue()) +
+
+									"	 </div>		 " + "</div>			  ";
+							sbContent.append(htmlContent);
+						} else if (entry.getKey() == "heading_with_lines") {
+							String htmlContent = "<div class=\"row heading-break\">"
+									+ "			  <div class=\"columns ten offset-by-one\">"
+									+ "				  <h2><span> " + getCDATARemoved(entry.getValue()) + "</span></h2>"
+									+ "	        </div>" + "		</div>";
+							sbContent.append(htmlContent);
+
+						} else if (entry.getKey() == "image_caption") {
+							String htmlContent = "<div class=\"columns ten offset-by-one\">"
+									+ "		<div class=\"caption\">" + "			<p>"
+									+ getCDATARemoved(entry.getValue()) + "			</p>" + "	</div>";
+							sbContent.append(htmlContent);
+
+						} else if (entry.getKey() == "single_landscape_image") {
+							String htmlContent = "<img src=\"" + getCDATARemoved(entry.getValue()) + "\" alt=\"/>";
+							sbContent.append(htmlContent);
+
+						}
+
+					}
+
+				} else {
+
+					if (childNodeName == "pull_out_fact_content") {
+						String htmlContent = "<div class=\"row factrow1\">      "
+								+ "    <div class=\"columns ten offset-by-one \"> " + getCDATARemoved(childNodeContent)
+								+ "	</div> " + "</div> ";
+						sbContent.append(htmlContent);
+					} else if (childNodeName == "text_block_content") {
+						String htmlContent = "<div class=\"row textrow1\">"
+								+ "	<div class=\"columns ten offset-by-one\">" + getCDATARemoved(childNodeContent) +
+
+								"	 </div>		 " + "</div>			 ";
+						sbContent.append(htmlContent);
+					} else if (childNodeName == "heading_with_lines") {
+						String htmlContent = "<div class=\"row heading-break\">"
+								+ "			  <div class=\"columns ten offset-by-one\">"
+								+ "				  <h2><span> " + getCDATARemoved(childNodeContent) + "</span></h2>"
+								+ "	        </div>" + "		</div>";
+						sbContent.append(htmlContent);
+
+					} else if (childNodeName == "image_caption") {
+						String htmlContent = "<div class=\"columns ten offset-by-one\">"
+								+ "		<div class=\"caption\">" + "			<p>" + getCDATARemoved(childNodeContent)
+								+ "			</p>" + "	</div>";
+						sbContent.append(htmlContent);
+
+					} else if (childNodeName == "single_landscape_image") {
+						String htmlContent = "<img src=\"" + getCDATARemoved(childNodeContent) + "\" alt=\"/>";
+						sbContent.append(htmlContent);
+
+					}
+
+				}
+
+			}
+
+		}
+		return sbContent.toString();
+
+	}
+
+	private Map<String, String> getChildNodeNameValueMap(Node childNode) {
+		Map<String, String> childValueMap = new HashMap<String, String>();
+		NodeList childNodeList = childNode.getChildNodes();
+		for (int i = 0; i < childNodeList.getLength(); i++) {
+			Node subChild = childNodeList.item(i);
+			String childNodeName = subChild.getNodeName();
+			String childNodeContent = subChild.getTextContent();
+			childValueMap.put(childNodeName, childNodeContent);
+		}
+
+		return childValueMap;
+	}
+
+	private String getCDATARemoved(String str) {
+		String newString = "";
+		if (str != null) {
+			newString = str.replace("<![CDATA[", "").replace("]]>", "");
+		}
+		return newString;
+
+	}
+}
