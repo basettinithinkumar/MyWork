@@ -1,0 +1,18 @@
+package vaablog.core.services;
+
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+
+@ObjectClassDefinition(name = "Page paths and XML file Configuration", description = "This configuration reads the XML path and page paths")
+public @interface BlogPageConfiguration {
+
+	@AttributeDefinition(name = "XMLPath", description = "Give XML path to read the content")
+	public String getXml() default "/content/dam/vaablog/posts/Posts-Export-2021-June-03-2212.xml";
+
+	@AttributeDefinition(name = "Root page Path", description = "Give the root page path to create the pages")
+	public String getRootPage() default "/content/blog";
+
+	@AttributeDefinition(name = "TemplatePath", description = "Give the Template path to create the pages")
+	public String getTemplate() default "/conf/VAA responsive editable template/settings/wcm/templates/base-page-template";
+
+}
